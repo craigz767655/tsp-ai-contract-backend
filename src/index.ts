@@ -16,9 +16,21 @@ app.set("trust proxy", 1); // Render terminates TLS at a proxy; needed for secur
 
 // ── CORS (credentialed) — only the configured Lovable/frontend origins ───────
 const allowed = new Set(env.allowedOrigins);
+// Lovable published apps and in-editor previews live on these domains; allow
+// them by pattern so rotating preview URLs work without re-listing each one.
+const allowedPatterns = [/\.lovable\.app$/, /\.lovableproject\.com$/];
+function isAllowedOrigin(origin: string): boolean {
+  if (allowed.has(origin)) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return allowedPatterns.some((re) => re.test(host));
+  } catch {
+    return false;
+  }
+}
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && allowed.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Credentials", "true");

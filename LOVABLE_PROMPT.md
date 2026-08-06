@@ -1,8 +1,9 @@
 # Lovable Prompt — TSP AI Contract (FRONTEND ONLY)
 
 Paste the block below into Lovable as your project instructions. It is deliberately
-strict so Lovable builds **only the UI** and never touches the backend. Replace
-`<YOUR-RENDER-API-URL>` with your Render URL (e.g. https://tsp-ai-contract-api.onrender.com).
+strict so Lovable builds **only the UI** and never touches the backend.
+
+Your live API base URL (already filled in below): **https://tsp-ai-contract-api.onrender.com**
 
 ---
 
@@ -23,7 +24,7 @@ The in-app AI assistant is named **Aria**.
    If something seems missing, leave a clearly-labelled TODO in the UI — do not build a backend
    workaround.
 5. **All server calls go to one base URL** stored in an env var `VITE_API_BASE_URL`
-   (value: `<YOUR-RENDER-API-URL>`). Use `fetch` with `credentials: "include"` so the
+   (value: `https://tsp-ai-contract-api.onrender.com`). Use `fetch` with `credentials: "include"` so the
    session cookie is sent. Never hardcode secrets or API keys in the frontend.
 
 ### BRAND
