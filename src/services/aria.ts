@@ -108,7 +108,9 @@ export type ContractAnalysis = {
   modelUsed: string;
 };
 
-const ANALYSIS_SYSTEM = `You are Aria, an enterprise legal/procurement AI reviewing a contract for a professional-services firm that negotiates MSAs and SOWs. Identify clauses, score risk, flag missing critical clauses, and propose redlines. Allowed clauseType values: ${CLAUSE_TYPES.join(", ")}. Severity values: info|low|medium|high|critical. riskScore is integer 0-100.
+const ANALYSIS_SYSTEM = `You are Aria, an enterprise legal/procurement AI reviewing a contract for a professional-services firm that negotiates MSAs and SOWs. Identify clauses, score risk, flag missing critical clauses, and propose redlines. Allowed clauseType values: ${CLAUSE_TYPES.join(", ")}. Severity values: info|low|medium|high|critical.
+
+RISK SCALE: riskScore is an integer from 0 to 100 where HIGHER MEANS MORE RISK / WORSE for our firm (0 = negligible risk, 100 = severe risk). Apply this same scale to the overall contract riskScore and to each clause's riskScore.
 
 Return JSON with this exact shape:
 {
@@ -121,9 +123,24 @@ Return JSON with this exact shape:
 
 Focus on: limitation of liability, indemnification, IP ownership, termination, payment terms, SLAs, acceptance criteria, change governance, cybersecurity, governing law.`;
 
-export async function analyzeContract(text: string): Promise<ContractAnalysis> {
+export async function analyzeContract(
+  text: string,
+  parent?: { docType?: string; text?: string },
+): Promise<ContractAnalysis> {
   const truncated = text.length > 30_000 ? text.slice(0, 30_000) + "\n…[truncated]" : text;
-  const { data, model } = await aiJSON(ANALYSIS_SYSTEM, truncated);
+  let system = ANALYSIS_SYSTEM;
+  let user = truncated;
+  // Family-aware analysis: when this document is a child (SOW / Change Order)
+  // under a master MSA, give Aria the master's text so risk reflects the
+  // combined terms and any conflicts between the two.
+  if (parent?.text) {
+    const parentType = parent.docType || "MSA";
+    const parentTrunc =
+      parent.text.length > 15_000 ? parent.text.slice(0, 15_000) + "\n…[truncated]" : parent.text;
+    system += `\n\nFAMILY CONTEXT: The document under review operates under a master ${parentType}. In a professional-services contract family, the master ${parentType} holds the governing TERMS & CONDITIONS (limitation of liability, indemnity, IP ownership, confidentiality, termination, governing law), while this child document (SOW / Change Order) typically holds SCOPE, DELIVERABLES, ACCEPTANCE, and PRICING. Rules: (1) Treat protections present in the master as APPLYING to this document — do NOT report them as "missing" here if the master already covers them. (2) Only flag genuine gaps not covered by EITHER document, conflicts between the two, or terms in this document less favorable than the master. (3) The overall riskScore must reflect the COMBINED MSA + ${parentType === "MSA" ? "child" : "SOW"} position, never this document scored in isolation.`;
+    user = `MASTER ${parentType} (context only):\n${parentTrunc}\n\n---\nDOCUMENT UNDER REVIEW:\n${truncated}`;
+  }
+  const { data, model } = await aiJSON(system, user);
   return normalize(data, model);
 }
 

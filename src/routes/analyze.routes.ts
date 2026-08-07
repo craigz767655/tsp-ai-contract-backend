@@ -70,6 +70,21 @@ async function persistAnalysis(opts: {
   return version;
 }
 
+// If this contract has a parent MSA, fetch the parent's type + latest text so
+// Aria can score the child (SOW / Change Order) in the context of the master.
+async function getParentContext(orgId: string, contractId: string) {
+  const [c] = await db.select({ parentId: contracts.parentId }).from(contracts)
+    .where(and(eq(contracts.id, contractId), eq(contracts.orgId, orgId))).limit(1);
+  if (!c?.parentId) return undefined;
+  const [p] = await db.select({ docType: contracts.docType }).from(contracts)
+    .where(and(eq(contracts.id, c.parentId), eq(contracts.orgId, orgId))).limit(1);
+  const [pv] = await db.select({ text: contractVersions.extractedText }).from(contractVersions)
+    .where(and(eq(contractVersions.contractId, c.parentId), eq(contractVersions.orgId, orgId)))
+    .orderBy(desc(contractVersions.versionNumber)).limit(1);
+  if (!pv?.text) return undefined;
+  return { docType: p?.docType, text: pv.text };
+}
+
 // POST /api/analyze  (multipart/form-data)
 // Fields: clientId, name, docType, parentId?, changeNote?, contractId? + file
 analyzeRouter.post("/", upload.single("file"), asyncHandler(async (req, res) => {
@@ -103,7 +118,8 @@ analyzeRouter.post("/", upload.single("file"), asyncHandler(async (req, res) => 
     contractId = created.id;
   }
 
-  const analysis = await analyzeContract(text);
+  const parent = await getParentContext(orgId, contractId!);
+  const analysis = await analyzeContract(text, parent);
   const version = await persistAnalysis({
     orgId, userId, contractId: contractId!,
     fileName: file.originalname, mimeType: file.mimetype, fileSize: file.size,

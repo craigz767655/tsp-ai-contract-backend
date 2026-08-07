@@ -8,6 +8,7 @@ import {
 import { requireAuth } from "../middleware/auth.middleware";
 import { asyncHandler, badRequest, notFound } from "../lib/errors";
 import { audit } from "../lib/audit";
+import { buildRedlineDocx } from "../services/docx-export";
 
 export const contractsRouter = Router();
 contractsRouter.use(requireAuth);
@@ -53,6 +54,43 @@ contractsRouter.get("/:id/family", asyncHandler(async (req, res) => {
   }
   const build = (node: any): any => ({ ...node, children: (byParent.get(node.id) || []).map(build) });
   res.json(build(root));
+}));
+
+// Export the latest analysis as a Word .docx with tracked-changes redlines.
+contractsRouter.get("/:id/export/redline.docx", asyncHandler(async (req, res) => {
+  const orgId = req.auth!.orgId;
+  const [contract] = await db.select().from(contracts)
+    .where(and(eq(contracts.id, req.params.id), eq(contracts.orgId, orgId))).limit(1);
+  if (!contract) throw notFound("Contract not found");
+  const [latest] = await db.select().from(contractVersions)
+    .where(and(eq(contractVersions.contractId, contract.id), eq(contractVersions.orgId, orgId)))
+    .orderBy(desc(contractVersions.versionNumber)).limit(1);
+  const rows = latest
+    ? await db.select().from(findings)
+        .where(and(eq(findings.versionId, latest.id), eq(findings.orgId, orgId)))
+        .orderBy(findings.position)
+    : [];
+  const buf = await buildRedlineDocx({
+    title: contract.name,
+    docType: contract.docType,
+    riskScore: contract.riskScore ?? null,
+    author: "Aria",
+    clauses: rows.filter((r) => r.kind === "clause").map((r) => ({
+      clauseType: r.clauseType, heading: r.heading, severity: r.severity,
+      riskScore: r.riskScore, summary: r.summary,
+    })),
+    missing: rows.filter((r) => r.kind === "missing").map((r) => ({
+      clauseType: r.clauseType, severity: r.severity, summary: r.summary,
+    })),
+    redlines: rows.filter((r) => r.kind === "redline").map((r) => ({
+      original: r.original || "", suggested: r.suggested || "",
+      recommendation: r.recommendation, severity: r.severity,
+    })),
+  });
+  const safeName = contract.name.replace(/[^a-z0-9]+/gi, "_").slice(0, 60) || "contract";
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName}_redlines.docx"`);
+  res.send(buf);
 }));
 
 contractsRouter.get("/:id", asyncHandler(async (req, res) => {

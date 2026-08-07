@@ -6,6 +6,7 @@ import { contractsRouter } from "./contracts.routes";
 import { analyzeRouter } from "./analyze.routes";
 import { ariaRouter } from "./aria.routes";
 import { clausesRouter } from "./clauses.routes";
+import { findingsRouter } from "./findings.routes";
 
 export function registerRoutes(app: Express) {
   app.use("/api/health", healthRouter);
@@ -15,4 +16,5 @@ export function registerRoutes(app: Express) {
   app.use("/api/analyze", analyzeRouter);
   app.use("/api/aria", ariaRouter);
   app.use("/api/clauses", clausesRouter);
+  app.use("/api/findings", findingsRouter);
 }
